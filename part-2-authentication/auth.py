@@ -1,94 +1,66 @@
 # auth.py - Authentication Helpers
+# This module handles password hashing and JWT token creation for login/register
 
 import jwt
 from datetime import datetime, timedelta
-from functools import wraps
-from flask import request, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+# SECRET_KEY: Used to sign JWT tokens. MUST be changed in production!
+# Anyone with this key can create valid tokens for any user.
 SECRET_KEY = "your-secret-key-change-in-production"
+
+# How long tokens remain valid (24 hours)
 TOKEN_EXPIRATION_HOURS = 24
 
 
+# ============================================================================
+# PASSWORD FUNCTIONS
+# ============================================================================
 def hash_password(password):
+    """
+    Convert plain text password to secure hash.
+
+    Uses Werkzeug's generate_password_hash which:
+    - Adds random salt (prevents rainbow table attacks)
+    - Uses PBKDF2 algorithm (slow = harder to brute force)
+
+    Example: "mypassword" -> "pbkdf2:sha256:260000$..."
+    """
     return generate_password_hash(password)
 
 
 def verify_password(password_hash, password):
+    """
+    Check if plain text password matches stored hash.
+
+    Returns True if password is correct, False otherwise.
+    Never compare passwords directly - always hash and compare hashes.
+    """
     return check_password_hash(password_hash, password)
 
 
+# ============================================================================
+# JWT TOKEN FUNCTIONS
+# ============================================================================
 def create_token(user_id, is_admin=False):
+    """
+    Create a JWT (JSON Web Token) for authenticated user.
+
+    JWT Structure:
+    - Header: Algorithm info (HS256)
+    - Payload: Our data (user_id, is_admin, expiration)
+    - Signature: Proves token wasn't tampered with
+
+    The token is sent to client and stored in localStorage.
+    Client sends it back with each request in Authorization header.
+    """
     payload = {
-        'user_id': user_id,
-        'is_admin': is_admin,
-        'exp': datetime.utcnow() + timedelta(hours=TOKEN_EXPIRATION_HOURS),
-        'iat': datetime.utcnow()
+        'user_id': user_id,           # Who this token belongs to
+        'is_admin': is_admin,         # User's admin status
+        'exp': datetime.utcnow() + timedelta(hours=TOKEN_EXPIRATION_HOURS),  # When token expires
+        'iat': datetime.utcnow()      # When token was created
     }
     return jwt.encode(payload, SECRET_KEY, algorithm='HS256')
-
-
-def decode_token(token):
-    try:
-        return jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
-        return None
-
-
-def token_required(f):  # Decorator for protected routes
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        token = None
-
-        if 'Authorization' in request.headers:
-            try:
-                token = request.headers['Authorization'].split(" ")[1]  # Bearer <token>
-            except IndexError:
-                return jsonify({'error': 'Invalid token format'}), 401
-
-        if not token:
-            return jsonify({'error': 'Token is missing'}), 401
-
-        data = decode_token(token)
-        if data is None:
-            return jsonify({'error': 'Token is invalid or expired'}), 401
-
-        from models import User
-        current_user = User.query.get(data['user_id'])
-
-        if not current_user:
-            return jsonify({'error': 'User not found'}), 401
-
-        return f(current_user, *args, **kwargs)
-    return decorated
-
-
-def admin_required(f):  # Decorator for admin-only routes
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        token = None
-
-        if 'Authorization' in request.headers:
-            try:
-                token = request.headers['Authorization'].split(" ")[1]
-            except IndexError:
-                return jsonify({'error': 'Invalid token format'}), 401
-
-        if not token:
-            return jsonify({'error': 'Token is missing'}), 401
-
-        data = decode_token(token)
-        if data is None:
-            return jsonify({'error': 'Token is invalid or expired'}), 401
-
-        if not data.get('is_admin', False):
-            return jsonify({'error': 'Admin access required'}), 403
-
-        from models import User
-        current_user = User.query.get(data['user_id'])
-
-        if not current_user:
-            return jsonify({'error': 'User not found'}), 401
-
-        return f(current_user, *args, **kwargs)
-    return decorated
