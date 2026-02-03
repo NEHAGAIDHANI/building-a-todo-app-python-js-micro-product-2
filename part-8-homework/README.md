@@ -5,6 +5,14 @@ Add a **priority** feature (low, medium, high) to todos.
 
 ---
 
+## About This Part
+This part uses the same structure as Part 6 and 7:
+- `get_current_user()` helper function for authentication
+- Protected routes require valid JWT token
+- User can only access their own todos
+
+---
+
 ## 7 Simple Steps
 
 Follow the steps in order. Each step is marked in the code with `STEP 1`, `STEP 2`, etc.
